@@ -1,7 +1,7 @@
 # Deskripsi
 Repository sebagai lampiran program dalam laporan mata kuliah Proyek Robotika. Terdapat 2 folder utama, yaitu:
-- `GCS/`: Folder tempat source code dan compiled program dari aplikasi desktop sebagai antarmuka robot.
-- `Firmware/`: Folder tempat source code dari firmware/program yang digunakan pada robot.
+- `GCS_PROBO/`: Folder tempat source code dan compiled program dari aplikasi desktop sebagai antarmuka robot.
+- `PROBO_ESP32/`: Folder tempat source code dari firmware/program yang digunakan pada robot.
 
 ## Kapabilitas Program:
 - [x] Komunikasi wireless menggunakan protokol WebSocket dalam jaringan Wi-Fi lokal.
