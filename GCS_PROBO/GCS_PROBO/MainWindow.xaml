@@ -420,21 +420,6 @@
                          Margin="10,0,10,10"
                          PreviewTextInput="Int8BitValidationTextBox"
                          MaxLength="3"/>
-                <StackPanel Orientation="Horizontal">
-                    <CheckBox x:Name="SimModeCheckBox"
-                              Content="Simulation Mode:"
-                              FontFamily="Consolas"
-                              FontSize="12"
-                              Foreground="White"
-                              VerticalAlignment="Center"
-                              Margin="10"/>
-                    <TextBlock x:Name="SimModeVal"
-                               Text="NOT CONNECTED"
-                               FontFamily="Consolas"
-                               FontSize="12"
-                               Foreground="White"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
                 <Button Content="Write"
                         Margin="10"
                         Width="80"

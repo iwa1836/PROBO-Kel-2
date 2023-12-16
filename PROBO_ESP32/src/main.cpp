@@ -48,10 +48,10 @@ unsigned long currMill, prevMill, currTimeout, startTimeout;
 const uint16_t sendingInterval = 50, dropBallTimeout = 8000;
 uint8_t leftAxisX, leftAxisY, rightAxisX, rightAxisY;
 uint16_t buttons;
-uint8_t telemetryData[20], configData[18];
-uint32_t packetCount, simStartPacketCount;
+uint8_t telemetryData[20], configData[17];
+uint32_t packetCount;
 uint8_t LTSensor[8], LTSensor_HIGH[8], LTSensor_LOW[8], speed, ballColor, ballADC, LTThreshold, ballThreshold, autoIndex, servoAngle = 90;
-bool startPoint, stepState, simModeState;
+bool startPoint, stepState;
 uint16_t stepCount;
 float PIDSetpoint = 0, PIDInput, PIDOutput;
 
@@ -108,7 +108,6 @@ TaskHandle_t BallShooting_Handle;
 TaskHandle_t BallDropping_Handle;
 TaskHandle_t ArmPushBall_Handle;
 TaskHandle_t BallInserting_Handle;
-TaskHandle_t SimMode_Handle;
 
 WebSocketsServer wsServer(81);
 
@@ -163,7 +162,7 @@ void ProboState(void *pvParameters) {
 							break;
 
 						case 2:
-							if(!LTSensor[2] && !LTSensor[5]) {
+							if(!LTSensor[7] && !LTSensor[3]) {
 								proboTurnCW = false;
 								proboStop = true;
 								vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -384,7 +383,7 @@ void ProboState(void *pvParameters) {
 							break;
 
 						case 3:
-							if((EncR_Count <= (turnEncR_Count - 45)) && (EncL_Count <= (turnEncL_Count - 45))) {
+							if((EncR_Count <= (turnEncR_Count - 50)) && (EncL_Count <= (turnEncL_Count - 50))) {
 								proboReverse = false;
 								proboStop = true;
 								autoIndex++;
@@ -535,7 +534,7 @@ void ProboState(void *pvParameters) {
 							break;
 
 						case 5:
-							if(proboReverse && (EncR_Count <= (turnEncR_Count - 140)) && (EncL_Count <= (turnEncL_Count - 140))) {
+							if(proboReverse && (EncR_Count <= (turnEncR_Count - 150)) && (EncL_Count <= (turnEncL_Count - 150))) {
 								autoIndex++;
 								proboReverse = false;
 								proboStop = true;
@@ -649,9 +648,745 @@ void ProboState(void *pvParameters) {
 						// Mundur
 						case 6:
 							pid.Reset();
+							if(!LTSensor[4] && !LTSensor[2] && (EncR_Count >= (turnEncR_Count + 100))) {
+								speed -= 8;
+								proboTurnCCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								pid.Reset();
+								autoIndex++;
+								proboReverse = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 7:
+							if(proboReverse && (EncR_Count <= (turnEncR_Count - 150)) && (EncL_Count <= (turnEncL_Count - 150))) {
+								autoIndex++;
+								proboReverse = false;
+								proboStop = true;
+								startTimeout = millis();
+							}
+							break;
+
+						// Drop bola 2
+						case 8:
+							if(ballColor != INVALID && eTaskGetState(RevolverMove90_Handle) == eSuspended) {
+								vTaskDelay(500 / portTICK_PERIOD_MS);
+								autoIndex++;
+								vTaskResume(BallDropping_Handle);
+							}
+							currTimeout = millis();
+							if((currTimeout - startTimeout) >= dropBallTimeout) {
+								autoIndex++;
+							}
+							break;
+
+						// Maju ke search manual
+						case 9:
+							if(eTaskGetState(BallDropping_Handle) == eSuspended) {
+								vTaskDelay(500 / portTICK_PERIOD_MS);
+								autoIndex = 0;
+								pid.Reset();
+								proboStop = false;
+								proboState = PROBO_AUTO_SEARCH_MANUAL;
+							}
+							break;
+
+						default:
+							break;
+					}
+					break;
+
+				case PROBO_AUTO_DROP_BALL_3:
+					break;
+
+				case PROBO_AUTO_DROP_BALL_4:
+					break;
+
+				case PROBO_AUTO_SEARCH_MANUAL:
+					switch(autoIndex) {
+						// Percabangan +
+						case 0:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								autoIndex++;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 1:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 70)) && (EncL_Count >= (turnEncL_Count + 70))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+								speed += 16;
+								proboTurnCW = true;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 2:
+							if(!LTSensor[0] && !LTSensor[4] && (EncL_Count >= (turnEncL_Count + 100))) {
+								speed -= 16;
+								proboTurnCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								pid.Reset();
+								vTaskDelay(700 / portTICK_PERIOD_MS);
+								autoIndex++;
+							}
+							break;
+
+						// Belok kiri 90
+						case 3:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && LTSensor[3] && LTSensor[1]) {
+								autoIndex++;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 4:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 45)) && (EncL_Count >= (turnEncL_Count + 45))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+								proboTurnCCW = true;
+							}
+							break;
+
+						case 5:
+							if(!LTSensor[2] && !LTSensor[5]) {
+								proboTurnCCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						// Curve kanan
+						case 6:
+							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && LTSensor[2] && LTSensor[5] && LTSensor[7] && LTSensor[3] && !LTSensor[1]) {
+								speed += 16;
+								proboCurveCW = true;
+								autoIndex++;
+							}
+							break;
+
+						case 7:
+							if(!LTSensor[5] && !LTSensor[7]) {
+								speed -= 16;
+								proboCurveCW = false;
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						// Curve kiri
+						case 8:
+							if(!LTSensor[6] && LTSensor[0] && LTSensor[4] && LTSensor[2] && LTSensor[5] && LTSensor[7] && LTSensor[3] && LTSensor[1]) {
+								speed += 16;
+								proboCurveCCW = true;
+								autoIndex++;
+							}
+							break;
+
+						case 9:
+							if(!LTSensor[4] && !LTSensor[2]) {
+								speed -= 16;
+								proboCurveCCW = false;
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						// Curve kanan
+						case 10:
+							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && LTSensor[2] && LTSensor[5] && LTSensor[7] && LTSensor[3] && !LTSensor[1]) {
+								speed += 16;
+								proboCurveCW = true;
+								autoIndex++;
+							}
+							break;
+
+						case 11:
+							if(!LTSensor[6] && !LTSensor[0]) {
+								speed -= 16;
+								proboCurveCW = false;
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						case 12:
+							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && LTSensor[2] && LTSensor[5] && LTSensor[7] && LTSensor[3] && LTSensor[1]) {
+								autoIndex++;
+							}
+
+						case 13:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								vTaskDelay(500 / portTICK_PERIOD_MS);
+								proboStop = true;
+								autoIndex++;
+							}
+
+						default:
+							break;
+					}
+					break;
+
+				case PROBO_MANUAL_RUNNING:
+					break;
+
+				case PROBO_MANUAL_PICK_BALL:
+					break;
+
+				case PROBO_MANUAL_SHOOT_BALL:
+					break;
+
+				default:
+					buzzer.writeNote(NOTE_C, 6);
+					vTaskDelay(100 / portTICK_PERIOD_MS);
+					buzzer.write(0);
+					vTaskDelay(100 / portTICK_PERIOD_MS);
+					break;
+			}
+		} else { // Start Point Red
+			switch(proboState) {
+				case PROBO_CONFIG:
+					break;
+
+				case PROBO_READY:
+					break;
+
+				case PROBO_AUTO_SEARCH_BALL:
+					switch(autoIndex) {
+						// Belok kiri 90
+						case 0:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && LTSensor[3] && LTSensor[1]) {
+								autoIndex++;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 1:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 30)) && (EncL_Count >= (turnEncL_Count + 30))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+								proboTurnCCW = true;
+							}
+							break;
+
+						case 2:
+							if(!LTSensor[2] && !LTSensor[5]) {
+								proboTurnCCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						// Belok kanan 90
+						case 3:
+							if(LTSensor[6] && LTSensor[0] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								autoIndex++;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 4:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 45)) && (EncL_Count >= (turnEncL_Count + 45))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+								proboTurnCW = true;
+							}
+							break;
+
+						case 5:
+							if(!LTSensor[2] && !LTSensor[5]) {
+								proboTurnCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						// Percabangan T
+						case 6:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								autoIndex = 0;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+								proboState = PROBO_AUTO_PICK_BALL;
+							}
+							break;
+
+						default:
+							break;
+					}
+					break;
+
+				/*case PROBO_AUTO_PICK_BALL: // Pick 4 Balls
+					switch(autoIndex) {
+						// Belok kiri
+						case 0:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 150)) && (EncL_Count >= (turnEncL_Count + 150))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								speed += 32;
+								proboTurnCCW = true;
+								turnEncR_Count = EncR_Count;
+							}
+							break;
+
+						case 1:
+							pid.Reset();
+							if(proboTurnCCW && (EncR_Count == (turnEncR_Count + 180))) {
+								speed -= 32;
+								proboTurnCCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								proboForward = true;
+								autoIndex++;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						// Ambil bola kanan
+						case 2:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 35)) && (EncL_Count >= (turnEncL_Count + 35))) {
+								proboForward = false;
+								proboStop = true;
+								autoIndex++;
+							}
+							break;
+
+						case 3:
+							vTaskDelay(500 / portTICK_PERIOD_MS);
+							autoIndex++;
+							vTaskResume(BallPicker_Handle);
+							break;
+
+						// Ambil bola kiri
+						case 4:
+							if(eTaskGetState(BallPicker_Handle) == eSuspended) {
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								autoIndex++;
+								vTaskResume(RevolverMove90_Handle);
+								proboStop = false;
+								proboTurnCW = true;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 5:
+							pid.Reset();
+							if(proboTurnCW && (EncL_Count == (turnEncL_Count + 120))) {
+								proboTurnCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								proboReverse = true;
+								autoIndex++;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 6:
+							if(proboReverse && (EncR_Count <= (turnEncR_Count - 180)) && (EncL_Count <= (turnEncL_Count - 180))) {
+								proboReverse = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								proboTurnCCW = true;
+								speed += 32;
+								autoIndex++;
+								turnEncR_Count = EncR_Count;
+							}
+							break;
+
+						case 7:
+							pid.Reset();
+							if(proboTurnCCW && (EncR_Count == (turnEncR_Count + 120))) {
+								speed -= 32;
+								autoIndex++;
+								proboTurnCCW = false;
+								proboStop = true;
+							}
+							break;
+
+						case 8:
+							vTaskDelay(500 / portTICK_PERIOD_MS);
+							autoIndex++;
+							vTaskResume(BallPicker_Handle);
+							break;
+
+						// Putar balik
+						case 9:
+							if(eTaskGetState(BallPicker_Handle) == eSuspended) {
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								autoIndex++;
+								vTaskResume(RevolverMove90_Handle);
+								proboStop = false;
+								proboTurnCW = true;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 10:
+							pid.Reset();
+							if(proboTurnCW && (EncL_Count >= (turnEncL_Count + 250))) {
+								autoIndex = 0;
+								pid.Reset();
+								proboTurnCW = false;
+								proboState = PROBO_AUTO_DELIVER_BALL;
+							}
+							break;
+
+						default:
+							break;
+					}
+					break;*/
+
+				case PROBO_AUTO_PICK_BALL: // Pick 2 Balls Direct
+					switch(autoIndex) {
+						case 0:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 50)) && (EncL_Count >= (turnEncL_Count + 50))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+								proboTurnCW = true;
+							}
+							break;
+
+						case 1:
+							if(!LTSensor[2] && !LTSensor[5]) {
+								proboTurnCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						case 2:
+							vTaskDelay(2000 / portTICK_PERIOD_MS);
+							autoIndex++;
+							proboReverse = true;
+							turnEncR_Count = EncR_Count;
+							turnEncL_Count = EncL_Count;
+							break;
+
+						case 3:
+							if((EncR_Count <= (turnEncR_Count - 45)) && (EncL_Count <= (turnEncL_Count - 45))) {
+								proboReverse = false;
+								proboStop = true;
+								autoIndex++;
+							}
+							break;
+
+						case 4:
+							vTaskDelay(500 / portTICK_PERIOD_MS);
+							autoIndex++;
+							vTaskResume(BallPicker_Handle);
+							break;
+
+						case 5:
+							if(eTaskGetState(BallPicker_Handle) == eSuspended) {
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								vTaskResume(RevolverMove90_Handle);
+								proboStop = false;
+								proboTurnCCW = true;
+								vTaskDelay(700 / portTICK_PERIOD_MS);
+								autoIndex++;
+							}
+							break;
+
+						case 6:
+							pid.Reset();
+							if(!LTSensor[0] && !LTSensor[4]) {
+								proboTurnCCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex = 0;
+								pid.Reset();
+								proboState = PROBO_AUTO_DELIVER_BALL;
+							}
+							break;
+
+						default:
+							break;
+					}
+					break;
+
+				case PROBO_AUTO_DELIVER_BALL:
+					if(eTaskGetState(BallInserting_Handle) == eSuspended) {
+						vTaskResume(BallInserting_Handle);
+					}
+					switch(autoIndex) {
+						// Percabangan T
+						case 0:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								autoIndex++;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 1:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 30)) && (EncL_Count >= (turnEncL_Count + 30))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(5000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex = 0;
+								pid.Reset();
+								speed += 16;
+								proboTurnCCW = true;
+								turnEncR_Count = EncR_Count;
+								proboState = PROBO_AUTO_DROP_BALL_1;
+							}
+							break;
+
+						default:
+							break;
+
+					}
+					break;
+
+				case PROBO_AUTO_DROP_BALL_1:
+					if(eTaskGetState(BallInserting_Handle) != eSuspended) {
+						vTaskSuspend(BallInserting_Handle);
+					}
+					if(ballColor == INVALID && eTaskGetState(RevolverMove90_Handle) == eSuspended && eTaskGetState(BallDropping_Handle) == eSuspended) {
+						vTaskResume(RevolverMove90_Handle);
+					}
+					switch(autoIndex) {
+						// Belok kiri
+						case 0:
+							if(proboTurnCCW && (EncR_Count == (turnEncR_Count + 140))) {
+								speed -= 16;
+								proboTurnCCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						// Percabangan + 1
+						case 1:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								pid.Reset();
+								vTaskDelay(500 / portTICK_PERIOD_MS);
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						// Percabangan + 2
+						case 2:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								autoIndex++;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 3:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 45)) && (EncL_Count >= (turnEncL_Count + 45))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								pid.Reset();
+								autoIndex++;
+								speed += 8;
+								proboTurnCCW = true;
+								turnEncR_Count = EncR_Count;
+							}
+							break;
+
+						// Mundur
+						case 4:
+							pid.Reset();
 							if(!LTSensor[0] && !LTSensor[4] && (EncR_Count >= (turnEncR_Count + 100))) {
 								speed -= 8;
 								proboTurnCCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								pid.Reset();
+								autoIndex++;
+								proboReverse = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 5:
+							if(proboReverse && (EncR_Count <= (turnEncR_Count - 140)) && (EncL_Count <= (turnEncL_Count - 140))) {
+								autoIndex++;
+								proboReverse = false;
+								proboStop = true;
+								startTimeout = millis();
+							}
+							break;
+
+						// Drop bola 1
+						case 6:
+							if(ballColor != INVALID && eTaskGetState(RevolverMove90_Handle) == eSuspended) {
+								vTaskDelay(500 / portTICK_PERIOD_MS);
+								autoIndex++;
+								vTaskResume(BallDropping_Handle);
+							}
+							currTimeout = millis();
+							if((currTimeout - startTimeout) >= dropBallTimeout) {
+								autoIndex++;
+							}
+							break;
+
+						// Maju ke drop bola 2
+						case 7:
+							if(eTaskGetState(BallDropping_Handle) == eSuspended) {
+								vTaskDelay(500 / portTICK_PERIOD_MS);
+								autoIndex = 0;
+								pid.Reset();
+								proboStop = false;
+								proboState = PROBO_AUTO_DROP_BALL_2;
+							}
+							break;
+
+						default:
+							break;
+					}
+					break;
+
+				case PROBO_AUTO_DROP_BALL_2:
+					if(ballColor == INVALID && eTaskGetState(RevolverMove90_Handle) == eSuspended && eTaskGetState(BallDropping_Handle) == eSuspended) {
+						vTaskResume(RevolverMove90_Handle);
+					}
+					switch(autoIndex) {
+						// Percabangan +
+						case 0:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								autoIndex++;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 1:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 45)) && (EncL_Count >= (turnEncL_Count + 45))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+								proboTurnCCW = true;
+								turnEncR_Count = EncR_Count;
+							}
+							break;
+
+						// Belok kiri arah drop bola 2
+						case 2:
+							if(!LTSensor[2] && !LTSensor[5] && (EncR_Count >= (turnEncR_Count + 100))) {
+								proboTurnCCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						// Percabangan + 1
+						case 3:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								pid.Reset();
+								vTaskDelay(500 / portTICK_PERIOD_MS);
+								autoIndex++;
+								pid.Reset();
+							}
+							break;
+
+						// Percabangan + 2
+						case 4:
+							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								autoIndex++;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 5:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 70)) && (EncL_Count >= (turnEncL_Count + 70))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								pid.Reset();
+								autoIndex++;
+								speed += 8;
+								proboTurnCW = true;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						// Mundur
+						case 6:
+							pid.Reset();
+							if(!LTSensor[7] && !LTSensor[3] && (EncL_Count >= (turnEncL_Count + 100))) {
+								speed -= 8;
+								proboTurnCW = false;
 								proboStop = true;
 								vTaskDelay(1000 / portTICK_PERIOD_MS);
 								proboStop = false;
@@ -728,14 +1463,48 @@ void ProboState(void *pvParameters) {
 								autoIndex++;
 								pid.Reset();
 								speed += 16;
-								proboTurnCW = true;
-								turnEncL_Count = EncL_Count;
+								proboTurnCCW = true;
+								turnEncR_Count = EncR_Count;
 							}
 							break;
 
 						case 2:
-							if(!LTSensor[2] && !LTSensor[5] && (EncL_Count >= (turnEncL_Count + 100))) {
+							if(!LTSensor[2] && !LTSensor[5] && (EncR_Count >= (turnEncR_Count + 100))) {
 								speed -= 16;
+								proboTurnCCW = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								pid.Reset();
+								vTaskDelay(700 / portTICK_PERIOD_MS);
+								autoIndex++;
+							}
+							break;
+
+						// Belok kanan 90
+						case 3:
+							if(LTSensor[6] && LTSensor[0] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
+								autoIndex++;
+								proboForward = true;
+								turnEncR_Count = EncR_Count;
+								turnEncL_Count = EncL_Count;
+							}
+							break;
+
+						case 4:
+							if(proboForward && (EncR_Count >= (turnEncR_Count + 45)) && (EncL_Count >= (turnEncL_Count + 45))) {
+								proboForward = false;
+								proboStop = true;
+								vTaskDelay(1000 / portTICK_PERIOD_MS);
+								proboStop = false;
+								autoIndex++;
+								pid.Reset();
+								proboTurnCW = true;
+							}
+							break;
+
+						case 5:
+							if(!LTSensor[2] && !LTSensor[5]) {
 								proboTurnCW = false;
 								proboStop = true;
 								vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -745,56 +1514,16 @@ void ProboState(void *pvParameters) {
 							}
 							break;
 
-						case 3:
-							proboForward = true;
-							vTaskDelay(500 / portTICK_PERIOD_MS);
-							proboForward = false;
-							autoIndex++;
-							break;
-
-						// Belok kiri 90
-						case 4:
-							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboForward = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						case 5:
-							if(proboForward && (EncR_Count >= (turnEncR_Count + 45)) && (EncL_Count >= (turnEncL_Count + 45))) {
-								proboForward = false;
-								proboStop = true;
-								vTaskDelay(1000 / portTICK_PERIOD_MS);
-								proboStop = false;
-								autoIndex++;
-								pid.Reset();
-								proboTurnCCW = true;
-							}
-							break;
-
+						// Curve kiri
 						case 6:
-							if(!LTSensor[2] && !LTSensor[5]) {
-								proboTurnCCW = false;
-								proboStop = true;
-								vTaskDelay(1000 / portTICK_PERIOD_MS);
-								proboStop = false;
-								autoIndex++;
-								pid.Reset();
-							}
-							break;
-
-						// Curve kanan
-						case 7:
-							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && LTSensor[2] && LTSensor[5] && LTSensor[7] && LTSensor[3] && !LTSensor[1]) {
+							if(!LTSensor[6] && LTSensor[0] && LTSensor[4] && LTSensor[2] && LTSensor[5] && LTSensor[7] && LTSensor[3] && LTSensor[1]) {
 								speed += 16;
-								proboCurveCW = true;
+								proboCurveCCW = true;
 								autoIndex++;
 							}
 							break;
 
-						case 8:
+						case 7:
 							if(!LTSensor[4] && !LTSensor[2]) {
 								speed -= 16;
 								proboCurveCW = false;
@@ -803,19 +1532,19 @@ void ProboState(void *pvParameters) {
 							}
 							break;
 
-						// Curve kiri
-						case 9:
-							if(!LTSensor[6] && LTSensor[0] && LTSensor[4] && LTSensor[2] && LTSensor[5] && LTSensor[7] && LTSensor[3] && LTSensor[1]) {
+						// Curve kanan
+						case 8:
+							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && LTSensor[2] && LTSensor[5] && LTSensor[7] && LTSensor[3] && !LTSensor[1]) {
 								speed += 16;
-								proboCurveCCW = true;
+								proboCurveCW = true;
 								autoIndex++;
 							}
 							break;
 
-						case 10:
-							if(!LTSensor[4] && !LTSensor[2]) {
+						case 9:
+							if(!LTSensor[5] && !LTSensor[7]) {
 								speed -= 16;
-								proboCurveCCW = false;
+								proboCurveCW = false;
 								autoIndex++;
 								pid.Reset();
 							}
@@ -842,710 +1571,7 @@ void ProboState(void *pvParameters) {
 					vTaskDelay(100 / portTICK_PERIOD_MS);
 					break;
 			}
-		}/* else { // Start Point Red
-			switch(proboState) {
-				case PROBO_CONFIG:
-					break;
-
-				case PROBO_READY:
-					break;
-
-				case PROBO_AUTO_SEARCH_BALL:
-					switch(autoIndex) {
-						// Belok kiri 90
-						case 0:
-							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboLeftTurnForward = true;
-								turnEncR_Count = EncR_Count;
-							}
-							break;
-
-						case 1:
-							if(proboLeftTurnForward && (EncR_Count == (turnEncR_Count + 220))) {
-								autoIndex++;
-								pid.Reset();
-								proboLeftTurnForward = false;
-							}
-							break;
-
-						// Belok kanan 90
-						case 2:
-							if(LTSensor[6] && LTSensor[0] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
-								speed += 32;
-								autoIndex++;
-								proboRightTurnForward = true;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						case 3:
-							if(proboRightTurnForward && (EncL_Count == (turnEncL_Count + 235))) {
-								speed -= 32;
-								autoIndex++;
-								pid.Reset();
-								proboRightTurnForward = false;
-							}
-							break;
-
-						// Percabangan T
-						case 4:
-							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
-								autoIndex = 0;
-								proboForward = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-								proboState = PROBO_AUTO_PICK_BALL;
-							}
-							break;
-
-						default:
-							break;
-					}
-					break;
-
-				case PROBO_AUTO_PICK_BALL:
-					switch(autoIndex) {
-						// Belok kanan
-						case 0:
-							if(proboForward && (EncR_Count >= (turnEncR_Count + 100)) && (EncL_Count >= (turnEncL_Count + 100))) {
-								proboForward = false;
-								proboStop = true;
-								vTaskDelay(1000 / portTICK_PERIOD_MS);
-								proboStop = false;
-								speed += 32;
-								autoIndex++;
-								proboRightTurnForward = true;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						case 1:
-							if(proboRightTurnForward && (EncL_Count == (turnEncL_Count + 235))) {
-								speed -= 32;
-								autoIndex++;
-								proboRightTurnForward = false;
-							}
-							break;
-
-						// Ambil bola kiri
-						case 2:
-							autoIndex++;
-							proboStop = true;
-							break;
-
-						case 3:
-							vTaskDelay(500 / portTICK_PERIOD_MS);
-							autoIndex++;
-							vTaskResume(BallPicker_Handle);
-							break;
-
-						// Ambil bola kanan
-						case 4:
-							if(eTaskGetState(BallPicker_Handle) == eSuspended) {
-								vTaskDelay(1000 / portTICK_PERIOD_MS);
-								autoIndex++;
-								vTaskResume(RevolverMove90_Handle);
-								proboStop = false;
-								proboReverse = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						case 5:
-							if(proboReverse && (EncR_Count <= (turnEncR_Count - 175)) && (EncL_Count <= (turnEncL_Count - 175))) {
-								proboReverse = false;
-								proboStop = true;
-								vTaskDelay(1000 / portTICK_PERIOD_MS);
-								proboStop = false;
-								speed += 32;
-								autoIndex++;
-								proboRightTurnForward = true;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						case 6:
-							if(proboRightTurnForward && (EncL_Count == (turnEncL_Count + 245))) {
-								speed -= 32;
-								proboRightTurnForward = false;
-								proboStop = true;
-								vTaskDelay(1000 / portTICK_PERIOD_MS);
-								proboStop = false;
-								autoIndex++;
-								proboLeftTurnForward = true;
-								turnEncR_Count = EncR_Count;
-							}
-							break;
-
-						case 7:
-							if(proboLeftTurnForward && (EncR_Count == (turnEncR_Count + 260))) {
-								autoIndex++;
-								proboLeftTurnForward = false;
-								proboStop = true;
-							}
-							break;
-
-						case 8:
-							vTaskDelay(500 / portTICK_PERIOD_MS);
-							autoIndex++;
-							vTaskResume(BallPicker_Handle);
-							break;
-
-						// Putar balik
-						case 9:
-							if(eTaskGetState(BallPicker_Handle) == eSuspended) {
-								vTaskDelay(1000 / portTICK_PERIOD_MS);
-								speed += 32;
-								autoIndex++;
-								vTaskResume(RevolverMove90_Handle);
-								proboStop = false;
-								proboLeftTurnReverse = true;
-								turnEncR_Count = EncR_Count;
-							}
-							break;
-
-						case 10:
-							if(proboLeftTurnReverse && (EncR_Count == (turnEncR_Count - 525))) {
-								speed -= 32;
-								autoIndex = 0;
-								pid.Reset();
-								proboLeftTurnReverse = false;
-								proboState = PROBO_AUTO_DELIVER_BALL;
-							}
-							break;
-
-						default:
-							break;
-					}
-					break;
-
-				case PROBO_AUTO_DELIVER_BALL:
-					if(eTaskGetState(BallInserting_Handle) == eSuspended) {
-						vTaskResume(BallInserting_Handle);
-					}
-					switch(autoIndex) {
-						case 0:
-							autoIndex++;
-							proboForward = true;
-							break;
-
-						// Percabangan T
-						case 1:
-							if(!LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3]) {
-								proboForward = false;
-								proboStop = true;
-								vTaskDelay(5000 / portTICK_PERIOD_MS);
-								proboStop = false;
-								speed += 32;
-								autoIndex = 0;
-								proboLeftTurnForward = true;
-								turnEncR_Count = EncR_Count;
-								proboState = PROBO_AUTO_DROP_BALL_1;
-							}
-							break;
-
-						default:
-							break;
-
-					}
-					break;
-
-				case PROBO_AUTO_DROP_BALL_1:
-					if(eTaskGetState(BallInserting_Handle) != eSuspended) {
-						vTaskSuspend(BallInserting_Handle);
-					}
-					if(ballColor != ORANGE && eTaskGetState(RevolverMove90_Handle) == eSuspended && eTaskGetState(BallDropping_Handle) == eSuspended) {
-						vTaskResume(RevolverMove90_Handle);
-					}
-					switch(autoIndex) {
-						// Belok kiri
-						case 0:
-							if(proboLeftTurnForward && (EncR_Count == (turnEncR_Count + 235))) {
-								speed -= 32;
-								autoIndex++;
-								pid.Reset();
-								proboLeftTurnForward = false;
-								proboForward = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						// Percabangan kanan drop bola 1
-						case 1:
-							if(proboForward && (EncR_Count >= (turnEncR_Count + 100)) && (EncL_Count >= (turnEncL_Count + 100))) {
-								autoIndex++;
-								proboForward = false;
-								proboStop = true;
-							}
-							break;
-
-						// Mundur kanan
-						case 2:
-							vTaskDelay(500 / portTICK_PERIOD_MS);
-							speed += 32;
-							autoIndex++;
-							proboStop = false;
-							proboRightTurnReverse = true;
-							turnEncL_Count = EncL_Count;
-							break;
-
-						case 3:
-							if(proboRightTurnReverse && (EncL_Count == (turnEncL_Count - 245))) {
-								speed -= 32;
-								autoIndex++;
-								proboRightTurnReverse = false;
-								proboReverse = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						// Mundur lurus
-						case 4:
-							if(proboReverse && (EncR_Count <= (turnEncR_Count - 30)) && (EncL_Count <= (turnEncL_Count - 30))) {
-								autoIndex++;
-								proboReverse = false;
-								proboStop = true;
-								startTimeout = millis();
-							}
-							break;
-
-						// Drop bola 1
-						case 5:
-							if(ballColor == ORANGE && eTaskGetState(RevolverMove90_Handle) == eSuspended) {
-								vTaskDelay(500 / portTICK_PERIOD_MS);
-								autoIndex++;
-								vTaskResume(BallDropping_Handle);
-							}
-							currTimeout = millis();
-							if((currTimeout - startTimeout) >= dropBallTimeout) {
-								autoIndex++;
-							}
-							break;
-
-						// Maju ke drop bola 2
-						case 6:
-							if(eTaskGetState(BallDropping_Handle) == eSuspended) {
-								vTaskDelay(500 / portTICK_PERIOD_MS);
-								autoIndex = 0;
-								pid.Reset();
-								proboStop = false;
-								proboState = PROBO_AUTO_DROP_BALL_2;
-							}
-							break;
-
-						default:
-							break;
-					}
-					break;
-
-				case PROBO_AUTO_DROP_BALL_2:
-					if(ballColor != WHITE && eTaskGetState(RevolverMove90_Handle) == eSuspended && eTaskGetState(BallDropping_Handle) == eSuspended) {
-						vTaskResume(RevolverMove90_Handle);
-					}
-					switch(autoIndex) {
-						// Percabangan T drop bola 1
-						case 0:
-							if(LTSensor[6] && !LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboRightTurnForward = true;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						// Belok kanan arah drop bola 2
-						case 1:
-							if(proboRightTurnForward && (EncL_Count == (turnEncL_Count + 276))) {
-								autoIndex++;
-								pid.Reset();
-								proboRightTurnForward = false;
-							}
-							break;
-
-						// Percabangan kanan drop bola 2
-						case 2:
-							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboForward = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						case 3:
-							if(proboForward && (EncR_Count >= (turnEncR_Count + 218)) && (EncL_Count >= (turnEncL_Count + 218))) {
-								autoIndex++;
-								proboForward = false;
-								proboStop = true;
-							}
-							break;
-
-						// Mundur kanan
-						case 4:
-							vTaskDelay(500 / portTICK_PERIOD_MS);
-							autoIndex++;
-							proboStop = false;
-							proboRightTurnReverse = true;
-							turnEncL_Count = EncL_Count;
-							break;
-
-						case 5:
-							if(proboRightTurnReverse && (EncL_Count == (turnEncL_Count - 276))) {
-								autoIndex++;
-								proboRightTurnReverse = false;
-								proboReverse = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						// Mundur lurus
-						case 6:
-							if(proboReverse && (EncR_Count <= (turnEncR_Count - 100)) && (EncL_Count <= (turnEncL_Count - 100))) {
-								autoIndex++;
-								proboReverse = false;
-								proboStop = true;
-								startTimeout = millis();
-							}
-							break;
-
-						// Drop bola 2
-						case 7:
-							if(ballColor == WHITE && eTaskGetState(RevolverMove90_Handle) == eSuspended) {
-								vTaskDelay(500 / portTICK_PERIOD_MS);
-								autoIndex++;
-								vTaskResume(BallDropping_Handle);
-							}
-							currTimeout = millis();
-							if((currTimeout - startTimeout) >= dropBallTimeout) {
-								autoIndex++;
-							}
-							break;
-
-						// Maju ke drop bola 3
-						case 8:
-							if(eTaskGetState(BallDropping_Handle) == eSuspended) {
-								vTaskDelay(500 / portTICK_PERIOD_MS);
-								autoIndex = 0;
-								pid.Reset();
-								proboStop = false;
-								proboState = PROBO_AUTO_DROP_BALL_3;
-							}
-							break;
-
-						default:
-							break;
-					}
-					break;
-
-				case PROBO_AUTO_DROP_BALL_3:
-					if(ballColor != WHITE && eTaskGetState(RevolverMove90_Handle) == eSuspended && eTaskGetState(BallDropping_Handle) == eSuspended) {
-						vTaskResume(RevolverMove90_Handle);
-					}
-					switch(autoIndex) {
-						// Percabangan T drop bola 2
-						case 0:
-							if(LTSensor[6] && !LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboRightTurnForward = true;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						// Belok kanan arah drop bola 3
-						case 1:
-							if(proboRightTurnForward && (EncL_Count == (turnEncL_Count + 276))) {
-								autoIndex++;
-								pid.Reset();
-								proboRightTurnForward = false;
-							}
-							break;
-
-						// Percabangan kanan drop bola 3
-						case 2:
-							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboForward = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						case 3:
-							if(proboForward && (EncR_Count >= (turnEncR_Count + 218)) && (EncL_Count >= (turnEncL_Count + 218))) {
-								autoIndex++;
-								proboForward = false;
-								proboStop = true;
-							}
-							break;
-
-						// Mundur kanan
-						case 4:
-							vTaskDelay(500 / portTICK_PERIOD_MS);
-							autoIndex++;
-							proboStop = false;
-							proboRightTurnReverse = true;
-							turnEncL_Count = EncL_Count;
-							break;
-
-						case 5:
-							if(proboRightTurnReverse && (EncL_Count == (turnEncL_Count - 276))) {
-								autoIndex++;
-								proboRightTurnReverse = false;
-								proboReverse = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						// Mundur lurus
-						case 6:
-							if(proboReverse && (EncR_Count <= (turnEncR_Count - 100)) && (EncL_Count <= (turnEncL_Count - 100))) {
-								autoIndex++;
-								proboReverse = false;
-								proboStop = true;
-								startTimeout = millis();
-							}
-							break;
-
-						// Drop bola 3
-						case 7:
-							if(ballColor == WHITE && eTaskGetState(RevolverMove90_Handle) == eSuspended) {
-								vTaskDelay(500 / portTICK_PERIOD_MS);
-								autoIndex++;
-								vTaskResume(BallDropping_Handle);
-							}
-							currTimeout = millis();
-							if((currTimeout - startTimeout) >= dropBallTimeout) {
-								autoIndex++;
-							}
-							break;
-
-						// Maju ke drop bola 4
-						case 8:
-							if(eTaskGetState(BallDropping_Handle) == eSuspended) {
-								vTaskDelay(500 / portTICK_PERIOD_MS);
-								autoIndex = 0;
-								pid.Reset();
-								proboStop = false;
-								proboState = PROBO_AUTO_DROP_BALL_4;
-							}
-							break;
-
-						default:
-							break;
-					}
-					break;
-
-				case PROBO_AUTO_DROP_BALL_4:
-					if(ballColor != ORANGE && eTaskGetState(RevolverMove90_Handle) == eSuspended && eTaskGetState(BallDropping_Handle) == eSuspended) {
-						vTaskResume(RevolverMove90_Handle);
-					}
-					switch(autoIndex) {
-						// Percabangan T drop bola 3
-						case 0:
-							if(LTSensor[6] && !LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboRightTurnForward = true;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						// Belok kanan arah drop bola 4
-						case 1:
-							if(proboRightTurnForward && (EncL_Count == (turnEncL_Count + 276))) {
-								autoIndex++;
-								pid.Reset();
-								proboRightTurnForward = false;
-							}
-							break;
-
-						// Percabangan kanan drop bola 4
-						case 2:
-							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboForward = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						case 3:
-							if(proboForward && (EncR_Count >= (turnEncR_Count + 218)) && (EncL_Count >= (turnEncL_Count + 218))) {
-								autoIndex++;
-								proboForward = false;
-								proboStop = true;
-							}
-							break;
-
-						// Mundur kanan
-						case 4:
-							vTaskDelay(500 / portTICK_PERIOD_MS);
-							autoIndex++;
-							proboStop = false;
-							proboRightTurnReverse = true;
-							turnEncL_Count = EncL_Count;
-							break;
-
-						case 5:
-							if(proboRightTurnReverse && (EncL_Count == (turnEncL_Count - 276))) {
-								autoIndex++;
-								proboRightTurnReverse = false;
-								proboReverse = true;
-								turnEncR_Count = EncR_Count;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						// Mundur lurus
-						case 6:
-							if(proboReverse && (EncR_Count <= (turnEncR_Count - 100)) && (EncL_Count <= (turnEncL_Count - 100))) {
-								autoIndex++;
-								proboReverse = false;
-								proboStop = true;
-								startTimeout = millis();
-							}
-							break;
-
-						// Drop bola 4
-						case 7:
-							if(ballColor == ORANGE && eTaskGetState(RevolverMove90_Handle) == eSuspended) {
-								vTaskDelay(500 / portTICK_PERIOD_MS);
-								autoIndex++;
-								vTaskResume(BallDropping_Handle);
-							}
-							currTimeout = millis();
-							if((currTimeout - startTimeout) >= dropBallTimeout) {
-								autoIndex++;
-							}
-							break;
-
-						// Maju ke mode manual
-						case 8:
-							if(eTaskGetState(BallDropping_Handle) == eSuspended) {
-								vTaskDelay(500 / portTICK_PERIOD_MS);
-								autoIndex = 0;
-								pid.Reset();
-								proboStop = false;
-								proboState = PROBO_AUTO_SEARCH_MANUAL;
-							}
-							break;
-
-						default:
-							break;
-					}
-					break;
-
-				case PROBO_AUTO_SEARCH_MANUAL:
-					switch(autoIndex) {
-						// Percabangan T drop bola 3
-						case 0:
-							if(LTSensor[6] && !LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboLeftTurnForward = true;
-								turnEncR_Count = EncR_Count;
-							}
-							break;
-
-						// Belok kiri arah manual
-						case 1:
-							if(proboLeftTurnForward && (EncR_Count == (turnEncR_Count + 276))) {
-								autoIndex++;
-								pid.Reset();
-								proboLeftTurnForward = false;
-							}
-							break;
-
-						// Percabangan kiri drop bola 3
-						case 2:
-							if(LTSensor[6] && !LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && LTSensor[7] && LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								pid.Reset();
-							}
-							break;
-
-						// Percabangan kiri drop bola 2
-						case 3:
-							if(LTSensor[6] && !LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && LTSensor[7] && LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								pid.Reset();
-							}
-							break;
-
-						// Percabangan kiri drop bola 1
-						case 4:
-							if(LTSensor[6] && !LTSensor[0] && !LTSensor[4] && !LTSensor[2] && !LTSensor[5] && LTSensor[7] && LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								pid.Reset();
-							}
-							break;
-
-						// Percabangan kanan
-						case 5:
-							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								pid.Reset();
-							}
-							break;
-
-						// Belok kanan 90
-						case 6:
-							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && !LTSensor[2] && !LTSensor[5] && !LTSensor[7] && !LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboRightTurnForward = true;
-								turnEncL_Count = EncL_Count;
-							}
-							break;
-
-						case 7:
-							if(proboRightTurnForward && (EncL_Count == (turnEncL_Count + 276))) {
-								autoIndex++;
-								pid.Reset();
-								proboRightTurnForward = false;
-							}
-							break;
-
-						// Masuk kotak manual
-						case 8:
-							if(LTSensor[6] && LTSensor[0] && LTSensor[4] && LTSensor[2] && LTSensor[5] && LTSensor[7] && LTSensor[3] && LTSensor[1]) {
-								autoIndex++;
-								proboForward = true;
-							}
-							break;
-
-						case 9:
-							if(proboForward && (EncR_Count >= (turnEncR_Count + 200)) && (EncL_Count >= (turnEncL_Count + 200))) {
-								autoIndex = 0;
-								proboForward = false;
-								proboStop = true;
-							}
-							break;
-
-						default:
-							break;
-					}
-					break;
-
-				case PROBO_MANUAL_RUNNING:
-					break;
-
-				case PROBO_MANUAL_PICK_BALL:
-					break;
-
-				case PROBO_MANUAL_SHOOT_BALL:
-					break;
-
-				default:
-					buzzer.writeNote(NOTE_C, 6);
-					vTaskDelay(100 / portTICK_PERIOD_MS);
-					buzzer.write(0);
-					vTaskDelay(100 / portTICK_PERIOD_MS);
-					break;
-			}
-		}*/
+		}
 		vTaskDelay(1 / portTICK_PERIOD_MS);
 	}
 }
@@ -1600,7 +1626,7 @@ void Motor(void *pvParameters) {
 				leftMotor1.write(0);
 				leftMotor2.write(speed + 8 + (PIDOutput * 0.1));
 			} else if(proboCurveCW) {
-				rightMotor1.write(0);
+				rightMotor1.write(speed);
 				rightMotor2.write(0);
 				leftMotor1.write(speed + 8 + (PIDOutput * 0.1));
 				leftMotor2.write(0);
@@ -1608,7 +1634,7 @@ void Motor(void *pvParameters) {
 				rightMotor1.write(0);
 				rightMotor2.write(speed + 8 + (PIDOutput * 0.1));
 				leftMotor1.write(0);
-				leftMotor2.write(0);
+				leftMotor2.write(speed * 0.5);
 			} else if(proboForward) {
 				rightMotor1.write(0);
 				rightMotor2.write(speed * 1.2);
@@ -1735,1193 +1761,6 @@ void BallInserting(void *pvParameters) {
 		}
 	}
 }
-
-void SimMode(void *pvParameters) {
-	for(;;) {
-		if(startPoint) { // Start Point Blue
-			switch(simStartPacketCount) {
-				#pragma region Sim LT 90 Degrees
-				case 0: // Starting
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-
-				case 20: // Kotak start
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-
-				case 40: // Garis awal
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-
-				case 100: // Belok kotak 90 kanan
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-
-				case 120: // Garis lurus kedua
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 200: // Belok kotak 90 kiri
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 220: // Garis lurus ketiga
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 300: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Pick Ball
-				case 500: // Garis lurus dari bola
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 600: // Percabangan kanan
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 610: // Garis lurus
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 700: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 720: // Garis lurus arah drop bola
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 760: // Percabangan drop bola 1
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Drop Ball 1
-				case 770: // Garis lurus dari drop bola 1
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1100: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1120: // Garis lurus arah drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1200: // Percabangan drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Drop Ball 2
-				case 1210: // Garis lurus dari drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1500: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1520: // Garis lurus arah drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1600: // Percabangan drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Drop Ball 3
-				case 1610: // Garis lurus dari drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1900: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1920: // Garis lurus arah drop bola 4
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2000: // Percabangan drop bola 4
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Drop Ball 4
-				case 2010: // Garis lurus dari drop bola 4
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2300: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2320: // Garis lurus arah drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2400: // Percabangan drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2410: // Garis lurus arah drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2500: // Percabangan drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2510: // Garis lurus arah drop bola 1
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2600: // Percabangan drop bola 1
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2610: // Garis lurus arah manual
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2700: // Percabangan kiri
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2710: // Garis lurus kedua
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2800: // Belok kotak 90 kiri
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT Curve
-				case 2820: // Garis lurus pertama
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3000: // Curve kanan
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 0;
-					LTSensor[1] = 0;
-					break;
-					
-				case 3100: // Garis lurus kedua
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3300: // Curve kiri
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 0;
-					LTSensor[0] = 0;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3400: // Garis lurus ketiga
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3600: // Curve kanan
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 0;
-					LTSensor[1] = 0;
-					break;
-					
-				case 3700: // Garis lurus terakhir
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3740: // No line
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3800: // Kotak finish
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-				#pragma endregion
-					
-				default:
-					buzzer.write(0);
-					break;
-			}
-		} else { // Start Point Red
-			switch(simStartPacketCount) {
-				#pragma region Sim LT 90 Degrees
-				case 0: // Starting
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-
-				case 20: // Kotak start
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-
-				case 40: // Garis awal
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-
-				case 100: // Belok kotak 90 kiri
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-
-				case 120: // Garis lurus kedua
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 200: // Belok kotak 90 kanan
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 220: // Garis lurus ketiga
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 300: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Pick Ball
-				case 500: // Garis lurus dari bola
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 600: // Percabangan kiri
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 610: // Garis lurus
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 700: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 720: // Garis lurus arah drop bola
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 760: // Percabangan drop bola 1
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Drop Ball 1
-				case 770: // Garis lurus dari drop bola 1
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1100: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1120: // Garis lurus arah drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1200: // Percabangan drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Drop Ball 2
-				case 1210: // Garis lurus dari drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1500: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1520: // Garis lurus arah drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1600: // Percabangan drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Drop Ball 3
-				case 1610: // Garis lurus dari drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1900: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 1920: // Garis lurus arah drop bola 4
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2000: // Percabangan drop bola 4
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT After Drop Ball 4
-				case 2010: // Garis lurus dari drop bola 4
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2300: // Percabangan T
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2320: // Garis lurus arah drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2400: // Percabangan drop bola 3
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2410: // Garis lurus arah drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2500: // Percabangan drop bola 2
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2510: // Garis lurus arah drop bola 1
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2600: // Percabangan drop bola 1
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2610: // Garis lurus arah manual
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2700: // Percabangan kanan
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2710: // Garis lurus kedua
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 2800: // Belok kotak 90 kanan
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-					
-				#pragma endregion
-
-				#pragma region Sim LT Curve
-				case 2820: // Garis lurus pertama
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3000: // Curve kiri
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 0;
-					LTSensor[0] = 0;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3100: // Garis lurus kedua
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3300: // Curve kanan
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 0;
-					LTSensor[1] = 0;
-					break;
-					
-				case 3400: // Garis lurus ketiga
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3600: // Curve kiri
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 0;
-					LTSensor[0] = 0;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3700: // Garis lurus terakhir
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3740: // No line
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 255;
-					LTSensor[4] = 255;
-					LTSensor[2] = 255;
-					LTSensor[5] = 255;
-					LTSensor[7] = 255;
-					LTSensor[3] = 255;
-					LTSensor[1] = 255;
-					break;
-					
-				case 3800: // Kotak finish
-					buzzer.writeNote(NOTE_E, 5);
-					LTSensor[6] = 255;
-					LTSensor[0] = 0;
-					LTSensor[4] = 0;
-					LTSensor[2] = 0;
-					LTSensor[5] = 0;
-					LTSensor[7] = 0;
-					LTSensor[3] = 0;
-					LTSensor[1] = 255;
-					break;
-				#pragma endregion
-					
-				default:
-					buzzer.write(0);
-					break;
-			}
-		}
-		vTaskDelay(1 / portTICK_PERIOD_MS);
-	}
-}
 #pragma endregion
 
 #pragma region Function Codes
@@ -2951,7 +1790,6 @@ void sendConfig() {
 	configData[14] = speed;
 	configData[15] = LTThreshold;
 	configData[16] = ballThreshold;
-	configData[17] = simModeState;
 	wsServer.broadcastBIN(configData, sizeof(configData));
 }
 
@@ -3008,10 +1846,6 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t lengt
 				if(eTaskGetState(BallInserting_Handle) != eSuspended) {
 					vTaskSuspend(BallInserting_Handle);
 				}
-				if(simModeState) {
-					buzzer.write(0);
-					vTaskSuspend(SimMode_Handle);
-				}
 			}
 
 			// Write CONFIG
@@ -3032,13 +1866,6 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t lengt
 				speed = payload[14];
 				LTThreshold = payload[15];
 				ballThreshold = payload[16];
-				simModeState = payload[17];
-
-				if(simModeState) {
-					vTaskSuspend(LTSensRead_Handle);
-				} else {
-					vTaskResume(LTSensRead_Handle);
-				}
 
 				preferences.putBool("StartPoint", startPoint);
 				preferences.putFloat("Kp", Kp.floatVal);
@@ -3083,17 +1910,9 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t lengt
 					proboForward = false;
 					proboReverse = false;
 					proboStop = false;
-					if(simModeState && (eTaskGetState(SimMode_Handle) == eSuspended)) {
-						simStartPacketCount = 0;
-						vTaskResume(SimMode_Handle);
-					}
 				} else if(buttons & 0x0020) {
 					proboState = PROBO_MANUAL_RUNNING;
 					vTaskSuspend(PID_Handle);
-					if(simModeState) {
-						buzzer.write(0);
-						vTaskSuspend(SimMode_Handle);
-					}
 				} else if((buttons & 0x1000) && (eTaskGetState(BallPicker_Handle) == eSuspended) && (eTaskGetState(ArmPushBall_Handle) == eSuspended) && (proboState == PROBO_MANUAL_RUNNING)) {
 					vTaskResume(BallPicker_Handle);
 				} else if((buttons & 0x8000) && (eTaskGetState(ArmPushBall_Handle) == eSuspended) && (eTaskGetState(BallPicker_Handle) == eSuspended) && (proboState == PROBO_MANUAL_RUNNING)) {
@@ -3181,8 +2000,6 @@ void IRAM_ATTR EncL_ISR() {
 
 #pragma region Main Program
 void setup() {
-	simModeState = false;
-
 	analogReadResolution(8);
 
 	for(uint8_t i = 0; i < 8; i++) {
@@ -3291,8 +2108,6 @@ void setup() {
 	vTaskSuspend(ArmPushBall_Handle);
 	xTaskCreatePinnedToCore(BallInserting, "BallInserting", 2048, NULL, 1, &BallInserting_Handle, 1);
 	vTaskSuspend(BallInserting_Handle);
-	xTaskCreatePinnedToCore(SimMode, "SimMode", 2048, NULL, 1, &SimMode_Handle, 1);
-	vTaskSuspend(SimMode_Handle);
 	#pragma endregion
 }
 
@@ -3321,9 +2136,6 @@ void loop() {
 		}
 
 		packetCount++;
-		if(simModeState) {
-			simStartPacketCount++;
-		}
 
 		if(proboState == PROBO_CONFIG) {
 			telemetryData[0] = 0x55;

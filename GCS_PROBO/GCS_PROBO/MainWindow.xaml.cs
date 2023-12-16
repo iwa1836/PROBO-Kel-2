@@ -141,7 +141,7 @@ namespace GCS_PROBO
                     byte[] KpByte = BitConverter.GetBytes(Kp);
                     byte[] KiByte = BitConverter.GetBytes(Ki);
                     byte[] KdByte = BitConverter.GetBytes(Kd);
-                    byte[] writeMessage = new byte[18];
+                    byte[] writeMessage = new byte[17];
                     writeMessage[0] = 0xA5;
                     writeMessage[1] = (byte)StartPointComboBox.SelectedIndex;
                     writeMessage[2] = KpByte[0];
@@ -159,7 +159,6 @@ namespace GCS_PROBO
                     writeMessage[14] = Speed;
                     writeMessage[15] = LTThreshold;
                     writeMessage[16] = BallThreshold;
-                    writeMessage[17] = (SimModeCheckBox.IsChecked == true)?(byte)1:(byte)0;
                     await SendMessages(writeMessage);
                 }
             }
@@ -443,15 +442,6 @@ namespace GCS_PROBO
                     SpeedValue.Text = data[14].ToString();
                     LTThresholdValue.Text = data[15].ToString();
                     BallThresholdValue.Text = data[16].ToString();
-
-                    if (data[17] == 1)
-                    {
-                        SimModeVal.Text = "ON";
-                    }
-                    else
-                    {
-                        SimModeVal.Text = "OFF";
-                    }
                 }
             }
             catch (Exception ex)
